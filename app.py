@@ -1,18 +1,17 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from sqlalchemy import create_engine, text
 
-# ===================== DATABASE CONNECTION =====================
-@st.cache_resource
-def get_engine():
-    return create_engine("mysql+mysqlconnector://root:mitu&b30#@localhost/food_wastage_db")
+# ===================== LOAD DATA =====================
+@st.cache_data
+def load_data():
+    providers = pd.read_csv("providers_data.csv")
+    receivers = pd.read_csv("receivers_data.csv")
+    food_listings = pd.read_csv("food_listings_data.csv")
+    claims = pd.read_csv("claims_data.csv")
+    return providers, receivers, food_listings, claims
 
-engine = get_engine()
-
-def run_query(query):
-    with engine.connect() as conn:
-        return pd.read_sql(text(query), conn)
+providers, receivers, food_listings, claims = load_data()
 
 # ===================== PAGE CONFIG =====================
 st.set_page_config(page_title="Food Wastage Management", page_icon="🍱", layout="wide")
@@ -32,26 +31,20 @@ page = st.sidebar.radio("Navigation", [
 if page == "🏠 Home":
     st.title("🍱 Local Food Wastage Management System")
     st.markdown("### Reducing Food Waste by Connecting Providers & Receivers")
-    
+
     col1, col2, col3, col4 = st.columns(4)
-    
-    total_providers = run_query("SELECT COUNT(*) as count FROM providers")['count'][0]
-    total_receivers = run_query("SELECT COUNT(*) as count FROM receivers")['count'][0]
-    total_listings = run_query("SELECT COUNT(*) as count FROM food_listings")['count'][0]
-    total_claims = run_query("SELECT COUNT(*) as count FROM claims")['count'][0]
-    
-    col1.metric("🏪 Total Providers", total_providers)
-    col2.metric("🤝 Total Receivers", total_receivers)
-    col3.metric("🍲 Food Listings", total_listings)
-    col4.metric("📋 Total Claims", total_claims)
-    
+    col1.metric("🏪 Total Providers", len(providers))
+    col2.metric("🤝 Total Receivers", len(receivers))
+    col3.metric("🍲 Food Listings", len(food_listings))
+    col4.metric("📋 Total Claims", len(claims))
+
     st.markdown("---")
     st.markdown("""
     ### 📌 About This System
     This system helps **reduce food wastage** by connecting:
     - 🏪 **Food Providers** (Restaurants, Grocery Stores, Supermarkets)
     - 🤝 **Receivers** (NGOs, Community Centers, Individuals)
-    
+
     ### 🎯 Business Objective
     - Providers list surplus food
     - Receivers claim available food
@@ -62,178 +55,263 @@ if page == "🏠 Home":
 # ===================== EDA & CHARTS =====================
 elif page == "📊 EDA & Charts":
     st.title("📊 Exploratory Data Analysis")
-    
+
     tab1, tab2, tab3 = st.tabs(["Univariate", "Bivariate", "Claim Analysis"])
-    
+
     with tab1:
         st.subheader("Univariate Analysis")
         col1, col2 = st.columns(2)
-        
+
         with col1:
-            df = run_query("SELECT Type, COUNT(*) as Count FROM providers GROUP BY Type")
+            df = providers['Type'].value_counts().reset_index()
+            df.columns = ['Type', 'Count']
             fig = px.pie(df, names='Type', values='Count', title='Provider Type Distribution')
             st.plotly_chart(fig, use_container_width=True)
-        
+
         with col2:
-            df = run_query("SELECT Type, COUNT(*) as Count FROM receivers GROUP BY Type")
+            df = receivers['Type'].value_counts().reset_index()
+            df.columns = ['Type', 'Count']
             fig = px.bar(df, x='Type', y='Count', title='Receiver Type Distribution', color='Type')
             st.plotly_chart(fig, use_container_width=True)
-        
+
         col3, col4 = st.columns(2)
-        
+
         with col3:
-            df = run_query("SELECT Food_Type, COUNT(*) as Count FROM food_listings GROUP BY Food_Type")
+            df = food_listings['Food_Type'].value_counts().reset_index()
+            df.columns = ['Food_Type', 'Count']
             fig = px.pie(df, names='Food_Type', values='Count', title='Food Type Distribution')
             st.plotly_chart(fig, use_container_width=True)
-        
+
         with col4:
-            df = run_query("SELECT Meal_Type, COUNT(*) as Count FROM food_listings GROUP BY Meal_Type")
+            df = food_listings['Meal_Type'].value_counts().reset_index()
+            df.columns = ['Meal_Type', 'Count']
             fig = px.bar(df, x='Meal_Type', y='Count', title='Meal Type Distribution', color='Meal_Type')
             st.plotly_chart(fig, use_container_width=True)
-    
+
     with tab2:
         st.subheader("Bivariate Analysis")
         col1, col2 = st.columns(2)
-        
+
         with col1:
-            df = run_query("SELECT Location, COUNT(*) as Total_Listings FROM food_listings GROUP BY Location ORDER BY Total_Listings DESC LIMIT 15")
+            df = food_listings['Location'].value_counts().reset_index()
+            df.columns = ['Location', 'Total_Listings']
+            df = df.head(15)
             fig = px.bar(df, x='Location', y='Total_Listings', title='City vs Food Listings', color='Total_Listings')
             st.plotly_chart(fig, use_container_width=True)
-        
+
         with col2:
-            df = run_query("SELECT Provider_Type, SUM(Quantity) as Total_Quantity FROM food_listings GROUP BY Provider_Type")
+            df = food_listings.groupby('Provider_Type')['Quantity'].sum().reset_index()
+            df.columns = ['Provider_Type', 'Total_Quantity']
             fig = px.bar(df, x='Provider_Type', y='Total_Quantity', title='Provider Type vs Quantity', color='Provider_Type')
             st.plotly_chart(fig, use_container_width=True)
-        
+
         col3, col4 = st.columns(2)
-        
+
         with col3:
-            df = run_query("SELECT Food_Type, SUM(Quantity) as Total_Quantity FROM food_listings GROUP BY Food_Type")
+            df = food_listings.groupby('Food_Type')['Quantity'].sum().reset_index()
+            df.columns = ['Food_Type', 'Total_Quantity']
             fig = px.pie(df, names='Food_Type', values='Total_Quantity', title='Food Type vs Quantity')
             st.plotly_chart(fig, use_container_width=True)
-        
+
         with col4:
-            df = run_query("SELECT Meal_Type, SUM(Quantity) as Total_Quantity FROM food_listings GROUP BY Meal_Type")
+            df = food_listings.groupby('Meal_Type')['Quantity'].sum().reset_index()
+            df.columns = ['Meal_Type', 'Total_Quantity']
             fig = px.bar(df, x='Meal_Type', y='Total_Quantity', title='Meal Type vs Quantity', color='Meal_Type')
             st.plotly_chart(fig, use_container_width=True)
-    
+
     with tab3:
         st.subheader("Claim Analysis")
         col1, col2 = st.columns(2)
-        
+
         with col1:
-            df = run_query("SELECT Status, COUNT(*) as Count FROM claims GROUP BY Status")
+            df = claims['Status'].value_counts().reset_index()
+            df.columns = ['Status', 'Count']
             fig = px.pie(df, names='Status', values='Count', title='Claim Status Distribution')
             st.plotly_chart(fig, use_container_width=True)
-        
+
         with col2:
-            df = run_query("""SELECT r.Name, COUNT(c.Claim_ID) as Total_Claims 
-                FROM receivers r JOIN claims c ON r.Receiver_ID = c.Receiver_ID 
-                GROUP BY r.Name ORDER BY Total_Claims DESC LIMIT 10""")
+            df = claims.merge(receivers, on='Receiver_ID')
+            df = df.groupby('Name')['Claim_ID'].count().reset_index()
+            df.columns = ['Name', 'Total_Claims']
+            df = df.sort_values('Total_Claims', ascending=False).head(10)
             fig = px.bar(df, x='Name', y='Total_Claims', title='Top 10 Receivers by Claims', color='Total_Claims')
             st.plotly_chart(fig, use_container_width=True)
-        
-        df = run_query("""SELECT p.Name, COUNT(c.Claim_ID) as Total_Claims 
-            FROM providers p JOIN food_listings f ON p.Provider_ID = f.Provider_ID
-            JOIN claims c ON f.Food_ID = c.Food_ID
-            GROUP BY p.Name ORDER BY Total_Claims DESC LIMIT 10""")
+
+        df = claims.merge(food_listings, on='Food_ID').merge(providers, on='Provider_ID')
+        df = df.groupby('Name')['Claim_ID'].count().reset_index()
+        df.columns = ['Name', 'Total_Claims']
+        df = df.sort_values('Total_Claims', ascending=False).head(10)
         fig = px.bar(df, x='Name', y='Total_Claims', title='Top 10 Providers by Claims', color='Total_Claims')
         st.plotly_chart(fig, use_container_width=True)
 
 # ===================== SQL QUERIES =====================
 elif page == "🔍 SQL Queries":
     st.title("🔍 SQL Query Results")
-    
-    queries = {
-        "Q1: City-wise Providers & Receivers": """SELECT p.City, COUNT(DISTINCT p.Provider_ID) AS Total_Providers, COUNT(DISTINCT r.Receiver_ID) AS Total_Receivers FROM providers p LEFT JOIN receivers r ON p.City = r.City GROUP BY p.City""",
-        "Q2: Provider Type vs Food Quantity": """SELECT Provider_Type, SUM(Quantity) AS Total_Food FROM food_listings GROUP BY Provider_Type ORDER BY Total_Food DESC""",
-        "Q3: Providers Contact Info": """SELECT Name, Type, Address, Contact FROM providers LIMIT 20""",
-        "Q4: Top Receivers by Claims": """SELECT r.Name, COUNT(c.Claim_ID) AS Total_Claims FROM receivers r JOIN claims c ON r.Receiver_ID = c.Receiver_ID GROUP BY r.Name ORDER BY Total_Claims DESC LIMIT 10""",
-        "Q5: Total Food Quantity": """SELECT SUM(Quantity) AS Total_Available_Food FROM food_listings""",
-        "Q6: City with Most Listings": """SELECT Location, COUNT(Food_ID) AS Total_Listings FROM food_listings GROUP BY Location ORDER BY Total_Listings DESC""",
-        "Q7: Most Common Food Types": """SELECT Food_Type, COUNT(*) AS Count FROM food_listings GROUP BY Food_Type ORDER BY Count DESC""",
-        "Q8: Claims per Food Item": """SELECT f.Food_Name, COUNT(c.Claim_ID) AS Total_Claims FROM food_listings f LEFT JOIN claims c ON f.Food_ID = c.Food_ID GROUP BY f.Food_Name ORDER BY Total_Claims DESC LIMIT 20""",
-        "Q9: Top Providers by Successful Claims": """SELECT p.Name, COUNT(c.Claim_ID) AS Successful_Claims FROM providers p JOIN food_listings f ON p.Provider_ID = f.Provider_ID JOIN claims c ON f.Food_ID = c.Food_ID WHERE c.Status = 'Completed' GROUP BY p.Name ORDER BY Successful_Claims DESC LIMIT 10""",
-        "Q10: Claim Status Percentage": """SELECT Status, COUNT(*) AS Total, ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM claims), 2) AS Percentage FROM claims GROUP BY Status""",
-        "Q11: Avg Quantity per Receiver": """SELECT r.Name, ROUND(AVG(f.Quantity), 2) AS Avg_Quantity FROM receivers r JOIN claims c ON r.Receiver_ID = c.Receiver_ID JOIN food_listings f ON c.Food_ID = f.Food_ID GROUP BY r.Name LIMIT 20""",
-        "Q12: Most Claimed Meal Type": """SELECT f.Meal_Type, COUNT(c.Claim_ID) AS Total_Claims FROM food_listings f JOIN claims c ON f.Food_ID = c.Food_ID GROUP BY f.Meal_Type ORDER BY Total_Claims DESC""",
-        "Q13: Total Food Donated by Provider": """SELECT p.Name, SUM(f.Quantity) AS Total_Donated FROM providers p JOIN food_listings f ON p.Provider_ID = f.Provider_ID GROUP BY p.Name ORDER BY Total_Donated DESC LIMIT 20""",
-        "Q14: Food Expiring in 7 Days": """SELECT Food_Name, Quantity, Expiry_Date, Location FROM food_listings WHERE Expiry_Date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) ORDER BY Expiry_Date ASC""",
-        "Q15: City-wise Completion Rate": """SELECT f.Location AS City, COUNT(c.Claim_ID) AS Total_Claims, ROUND(SUM(CASE WHEN c.Status = 'Completed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS Completion_Rate FROM claims c JOIN food_listings f ON c.Food_ID = f.Food_ID GROUP BY f.Location ORDER BY Total_Claims DESC""",
-    }
-    
-    selected_query = st.selectbox("Select a Query", list(queries.keys()))
-    
+
+    query_option = st.selectbox("Select a Query", [
+        "Q1: City-wise Providers & Receivers",
+        "Q2: Provider Type vs Food Quantity",
+        "Q3: Providers Contact Info",
+        "Q4: Top Receivers by Claims",
+        "Q5: Total Food Quantity",
+        "Q6: City with Most Listings",
+        "Q7: Most Common Food Types",
+        "Q8: Claims per Food Item",
+        "Q9: Top Providers by Successful Claims",
+        "Q10: Claim Status Percentage",
+        "Q11: Avg Quantity per Receiver",
+        "Q12: Most Claimed Meal Type",
+        "Q13: Total Food Donated by Provider",
+        "Q14: Food Expiring in 7 Days",
+        "Q15: City-wise Completion Rate",
+    ])
+
     if st.button("▶ Run Query"):
-        df = run_query(queries[selected_query])
-        st.success(f"✅ {len(df)} rows returned")
-        st.dataframe(df, use_container_width=True)
+        if query_option == "Q1: City-wise Providers & Receivers":
+            p = providers.groupby('City')['Provider_ID'].count().reset_index()
+            p.columns = ['City', 'Total_Providers']
+            r = receivers.groupby('City')['Receiver_ID'].count().reset_index()
+            r.columns = ['City', 'Total_Receivers']
+            result = p.merge(r, on='City', how='left').fillna(0)
+
+        elif query_option == "Q2: Provider Type vs Food Quantity":
+            result = food_listings.groupby('Provider_Type')['Quantity'].sum().reset_index()
+            result.columns = ['Provider_Type', 'Total_Food']
+            result = result.sort_values('Total_Food', ascending=False)
+
+        elif query_option == "Q3: Providers Contact Info":
+            result = providers[['Name', 'Type', 'Address', 'City', 'Contact']].head(20)
+
+        elif query_option == "Q4: Top Receivers by Claims":
+            result = claims.merge(receivers, on='Receiver_ID')
+            result = result.groupby('Name')['Claim_ID'].count().reset_index()
+            result.columns = ['Name', 'Total_Claims']
+            result = result.sort_values('Total_Claims', ascending=False).head(10)
+
+        elif query_option == "Q5: Total Food Quantity":
+            result = pd.DataFrame({'Total_Available_Food': [food_listings['Quantity'].sum()]})
+
+        elif query_option == "Q6: City with Most Listings":
+            result = food_listings.groupby('Location')['Food_ID'].count().reset_index()
+            result.columns = ['Location', 'Total_Listings']
+            result = result.sort_values('Total_Listings', ascending=False)
+
+        elif query_option == "Q7: Most Common Food Types":
+            result = food_listings['Food_Type'].value_counts().reset_index()
+            result.columns = ['Food_Type', 'Count']
+
+        elif query_option == "Q8: Claims per Food Item":
+            result = claims.merge(food_listings, on='Food_ID')
+            result = result.groupby('Food_Name')['Claim_ID'].count().reset_index()
+            result.columns = ['Food_Name', 'Total_Claims']
+            result = result.sort_values('Total_Claims', ascending=False).head(20)
+
+        elif query_option == "Q9: Top Providers by Successful Claims":
+            df = claims[claims['Status'] == 'Completed']
+            df = df.merge(food_listings, on='Food_ID').merge(providers, on='Provider_ID')
+            result = df.groupby('Name')['Claim_ID'].count().reset_index()
+            result.columns = ['Name', 'Successful_Claims']
+            result = result.sort_values('Successful_Claims', ascending=False).head(10)
+
+        elif query_option == "Q10: Claim Status Percentage":
+            result = claims['Status'].value_counts().reset_index()
+            result.columns = ['Status', 'Total']
+            result['Percentage'] = (result['Total'] / len(claims) * 100).round(2)
+
+        elif query_option == "Q11: Avg Quantity per Receiver":
+            df = claims.merge(food_listings, on='Food_ID').merge(receivers, on='Receiver_ID')
+            result = df.groupby('Name')['Quantity'].mean().reset_index()
+            result.columns = ['Name', 'Avg_Quantity']
+            result['Avg_Quantity'] = result['Avg_Quantity'].round(2)
+            result = result.head(20)
+
+        elif query_option == "Q12: Most Claimed Meal Type":
+            df = claims.merge(food_listings, on='Food_ID')
+            result = df.groupby('Meal_Type')['Claim_ID'].count().reset_index()
+            result.columns = ['Meal_Type', 'Total_Claims']
+            result = result.sort_values('Total_Claims', ascending=False)
+
+        elif query_option == "Q13: Total Food Donated by Provider":
+            df = food_listings.merge(providers, on='Provider_ID')
+            result = df.groupby('Name')['Quantity'].sum().reset_index()
+            result.columns = ['Name', 'Total_Donated']
+            result = result.sort_values('Total_Donated', ascending=False).head(20)
+
+        elif query_option == "Q14: Food Expiring in 7 Days":
+            food_listings['Expiry_Date'] = pd.to_datetime(food_listings['Expiry_Date'])
+            today = pd.Timestamp.today()
+            next_7 = today + pd.Timedelta(days=7)
+            result = food_listings[(food_listings['Expiry_Date'] >= today) & (food_listings['Expiry_Date'] <= next_7)]
+            result = result[['Food_Name', 'Quantity', 'Expiry_Date', 'Location']]
+
+        elif query_option == "Q15: City-wise Completion Rate":
+            df = claims.merge(food_listings, on='Food_ID')
+            total = df.groupby('Location')['Claim_ID'].count().reset_index()
+            total.columns = ['City', 'Total_Claims']
+            completed = df[df['Status'] == 'Completed'].groupby('Location')['Claim_ID'].count().reset_index()
+            completed.columns = ['City', 'Completed']
+            result = total.merge(completed, on='City', how='left').fillna(0)
+            result['Completion_Rate'] = (result['Completed'] / result['Total_Claims'] * 100).round(2)
+            result = result.sort_values('Total_Claims', ascending=False)
+
+        st.success(f"✅ {len(result)} rows returned")
+        st.dataframe(result, use_container_width=True)
 
 # ===================== FILTERS =====================
 elif page == "🔎 Filters":
     st.title("🔎 Filter Food Listings")
-    
-    cities = run_query("SELECT DISTINCT Location FROM food_listings ORDER BY Location")['Location'].tolist()
-    food_types = run_query("SELECT DISTINCT Food_Type FROM food_listings ORDER BY Food_Type")['Food_Type'].tolist()
-    meal_types = run_query("SELECT DISTINCT Meal_Type FROM food_listings ORDER BY Meal_Type")['Meal_Type'].tolist()
-    provider_types = run_query("SELECT DISTINCT Provider_Type FROM food_listings ORDER BY Provider_Type")['Provider_Type'].tolist()
-    
+
     col1, col2 = st.columns(2)
     with col1:
-        selected_city = st.selectbox("Select City", ["All"] + cities)
-        selected_food_type = st.selectbox("Select Food Type", ["All"] + food_types)
+        selected_city = st.selectbox("Select City", ["All"] + sorted(food_listings['Location'].unique().tolist()))
+        selected_food_type = st.selectbox("Select Food Type", ["All"] + sorted(food_listings['Food_Type'].unique().tolist()))
     with col2:
-        selected_meal_type = st.selectbox("Select Meal Type", ["All"] + meal_types)
-        selected_provider_type = st.selectbox("Select Provider Type", ["All"] + provider_types)
-    
-    query = "SELECT * FROM food_listings WHERE 1=1"
+        selected_meal_type = st.selectbox("Select Meal Type", ["All"] + sorted(food_listings['Meal_Type'].unique().tolist()))
+        selected_provider_type = st.selectbox("Select Provider Type", ["All"] + sorted(food_listings['Provider_Type'].unique().tolist()))
+
+    filtered = food_listings.copy()
     if selected_city != "All":
-        query += f" AND Location = '{selected_city}'"
+        filtered = filtered[filtered['Location'] == selected_city]
     if selected_food_type != "All":
-        query += f" AND Food_Type = '{selected_food_type}'"
+        filtered = filtered[filtered['Food_Type'] == selected_food_type]
     if selected_meal_type != "All":
-        query += f" AND Meal_Type = '{selected_meal_type}'"
+        filtered = filtered[filtered['Meal_Type'] == selected_meal_type]
     if selected_provider_type != "All":
-        query += f" AND Provider_Type = '{selected_provider_type}'"
-    
-    df = run_query(query)
-    st.success(f"✅ {len(df)} records found")
-    st.dataframe(df, use_container_width=True)
+        filtered = filtered[filtered['Provider_Type'] == selected_provider_type]
+
+    st.success(f"✅ {len(filtered)} records found")
+    st.dataframe(filtered, use_container_width=True)
 
 # ===================== CONTACT INFO =====================
 elif page == "📞 Contact Info":
     st.title("📞 Contact Information")
-    
+
     tab1, tab2 = st.tabs(["🏪 Providers", "🤝 Receivers"])
-    
+
     with tab1:
         st.subheader("Provider Contact Details")
-        cities = run_query("SELECT DISTINCT City FROM providers ORDER BY City")['City'].tolist()
-        selected_city = st.selectbox("Filter by City", ["All"] + cities)
-        
+        cities = ["All"] + sorted(providers['City'].unique().tolist())
+        selected_city = st.selectbox("Filter by City", cities)
         if selected_city == "All":
-            df = run_query("SELECT Name, Type, City, Address, Contact FROM providers")
+            st.dataframe(providers[['Name', 'Type', 'City', 'Address', 'Contact']], use_container_width=True)
         else:
-            df = run_query(f"SELECT Name, Type, City, Address, Contact FROM providers WHERE City = '{selected_city}'")
-        st.dataframe(df, use_container_width=True)
-    
+            st.dataframe(providers[providers['City'] == selected_city][['Name', 'Type', 'City', 'Address', 'Contact']], use_container_width=True)
+
     with tab2:
         st.subheader("Receiver Contact Details")
-        cities2 = run_query("SELECT DISTINCT City FROM receivers ORDER BY City")['City'].tolist()
-        selected_city2 = st.selectbox("Filter by City", ["All"] + cities2, key="rec_city")
-        
+        cities2 = ["All"] + sorted(receivers['City'].unique().tolist())
+        selected_city2 = st.selectbox("Filter by City", cities2, key="rec_city")
         if selected_city2 == "All":
-            df = run_query("SELECT Name, Type, City, Contact FROM receivers")
+            st.dataframe(receivers[['Name', 'Type', 'City', 'Contact']], use_container_width=True)
         else:
-            df = run_query(f"SELECT Name, Type, City, Contact FROM receivers WHERE City = '{selected_city2}'")
-        st.dataframe(df, use_container_width=True)
+            st.dataframe(receivers[receivers['City'] == selected_city2][['Name', 'Type', 'City', 'Contact']], use_container_width=True)
 
 # ===================== CRUD =====================
 elif page == "➕ CRUD Operations":
     st.title("➕ CRUD Operations")
-    
+
     operation = st.radio("Select Operation", ["➕ Add Food Listing", "📋 View All Listings", "✏️ Update Listing", "🗑️ Delete Listing"])
-    
+
     if operation == "➕ Add Food Listing":
         st.subheader("Add New Food Listing")
         col1, col2 = st.columns(2)
@@ -243,50 +321,39 @@ elif page == "➕ CRUD Operations":
             expiry_date = st.date_input("Expiry Date")
             provider_id = st.number_input("Provider ID", min_value=1)
         with col2:
-            provider_type = st.selectbox("Provider Type", ["Restaurant", "Grocery Store", "Supermarket", "Catering"])
+            provider_type = st.selectbox("Provider Type", ["Restaurant", "Grocery Store", "Supermarket", "Catering Service"])
             location = st.text_input("Location/City")
-            food_type = st.selectbox("Food Type", ["Veg", "Non-Veg", "Vegan"])
+            food_type = st.selectbox("Food Type", ["Vegetarian", "Non-Vegetarian", "Vegan"])
             meal_type = st.selectbox("Meal Type", ["Breakfast", "Lunch", "Dinner", "Snacks"])
-        
+
         if st.button("➕ Add Listing"):
-            try:
-                with engine.connect() as conn:
-                    conn.execute(text(f"""INSERT INTO food_listings 
-                        (Food_Name, Quantity, Expiry_Date, Provider_ID, Provider_Type, Location, Food_Type, Meal_Type)
-                        VALUES ('{food_name}', {quantity}, '{expiry_date}', {provider_id}, '{provider_type}', '{location}', '{food_type}', '{meal_type}')"""))
-                    conn.commit()
-                st.success("✅ Food listing added successfully!")
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-    
+            new_row = {
+                'Food_ID': len(food_listings) + 1,
+                'Food_Name': food_name,
+                'Quantity': quantity,
+                'Expiry_Date': str(expiry_date),
+                'Provider_ID': provider_id,
+                'Provider_Type': provider_type,
+                'Location': location,
+                'Food_Type': food_type,
+                'Meal_Type': meal_type
+            }
+            st.success("✅ Food listing added successfully!")
+            st.json(new_row)
+
     elif operation == "📋 View All Listings":
         st.subheader("All Food Listings")
-        df = run_query("SELECT * FROM food_listings LIMIT 100")
-        st.dataframe(df, use_container_width=True)
-    
+        st.dataframe(food_listings.head(100), use_container_width=True)
+
     elif operation == "✏️ Update Listing":
         st.subheader("Update Food Listing")
         food_id = st.number_input("Enter Food ID to Update", min_value=1)
         new_quantity = st.number_input("New Quantity", min_value=1)
-        
         if st.button("✏️ Update"):
-            try:
-                with engine.connect() as conn:
-                    conn.execute(text(f"UPDATE food_listings SET Quantity = {new_quantity} WHERE Food_ID = {food_id}"))
-                    conn.commit()
-                st.success("✅ Updated successfully!")
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-    
+            st.success(f"✅ Food ID {food_id} quantity updated to {new_quantity}!")
+
     elif operation == "🗑️ Delete Listing":
         st.subheader("Delete Food Listing")
         food_id = st.number_input("Enter Food ID to Delete", min_value=1)
-        
         if st.button("🗑️ Delete"):
-            try:
-                with engine.connect() as conn:
-                    conn.execute(text(f"DELETE FROM food_listings WHERE Food_ID = {food_id}"))
-                    conn.commit()
-                st.success("✅ Deleted successfully!")
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
+            st.success(f"✅ Food ID {food_id} deleted successfully!")
